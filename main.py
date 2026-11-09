@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import math
 
-app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="2.2.0")
+app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="2.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,12 +46,9 @@ def init_db():
 
 init_db()
 
-# ==================== ADVANCED STATISTICAL & PATTERN ENGINE ====================
-
 def classify_number(num: int) -> str:
     return "Big" if num >= 5 else "Small"
 
-# 1. Entropy Analysis (Shannon Entropy)
 def calculate_entropy(outcomes: List[str]) -> float:
     if not outcomes:
         return 0.0
@@ -64,7 +61,6 @@ def calculate_entropy(outcomes: List[str]) -> float:
             entropy -= p * math.log2(p)
     return round(entropy, 4)
 
-# 2. Markov Chain Analysis & Transition Matrix
 def calculate_markov_transition(outcomes: List[str]) -> Dict[str, Dict[str, float]]:
     matrix = {"Big": {"Big": 0, "Small": 0}, "Small": {"Big": 0, "Small": 0}}
     totals = {"Big": 0, "Small": 0}
@@ -89,9 +85,8 @@ def calculate_markov_transition(outcomes: List[str]) -> Dict[str, Dict[str, floa
 
 def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not records:
-        return {"error": "Insufficient data"}
+        return {"error": "Insufficient data", "sample_size": 0}
     
-    # Historical Data Analysis & Sorting
     sorted_recs = sorted(records, key=lambda x: str(x['issue_number']))
     numbers = [r['number'] for r in sorted_recs]
     outcomes = [r['big_small'] for r in sorted_recs]
@@ -102,7 +97,6 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
     big_pct = round((big_count / sample_size) * 100, 2) if sample_size > 0 else 0.0
     small_pct = round((small_count / sample_size) * 100, 2) if sample_size > 0 else 0.0
     
-    # 3. Streak Detection & Live Pattern Detection
     current_streak_type = outcomes[-1] if outcomes else None
     current_streak_len = 0
     for o in reversed(outcomes):
@@ -111,7 +105,6 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         else:
             break
 
-    # 4. Moving Average & Time Series Analysis (Window 10)
     numeric_outcomes = [1 if o == "Big" else 0 for o in outcomes]
     moving_avg = []
     window = 10
@@ -119,19 +112,10 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         w_slice = numeric_outcomes[max(0, i - window + 1):i + 1]
         moving_avg.append(round(sum(w_slice) / len(w_slice), 2))
 
-    # 5. Frequency Analysis (Digits 0-9)
     digit_freq = {i: numbers.count(i) for i in range(10)}
-    
-    # 6. Bayesian Statistical Analysis (Posterior Probability)
-    recent_5 = outcomes[-5:] if len(outcomes) >= 5 else outcomes
-    recent_bigs = recent_5.count("Big")
-    bayesian_big_prob = round((big_count + recent_bigs) / (sample_size + len(recent_5)), 4) if sample_size > 0 else 0.5
-
-    # 7. Entropy & Transition Matrix
     entropy = calculate_entropy(outcomes)
     transition_matrix = calculate_markov_transition(outcomes)
 
-    # 8. Pattern Break & Repeat Pattern Detection
     pattern_breaks = 0
     repeat_patterns = 0
     for i in range(1, len(outcomes)):
@@ -140,8 +124,7 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         else:
             repeat_patterns += 1
 
-    # 9. Ensemble Statistical Analysis (Combining Bayesian, Markov & Frequency weights)
-    ensemble_score = round((bayesian_big_prob * 0.4) + ((transition_matrix.get("Big", {}).get("Big", 0.5)) * 0.4) + ((big_pct / 100) * 0.2), 4)
+    ensemble_score = round((((big_pct / 100) * 0.4) + ((transition_matrix.get("Big", {}).get("Big", 0.5)) * 0.6)), 4)
 
     return {
         "sample_size": sample_size,
@@ -157,23 +140,24 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         "moving_average": moving_avg[-20:],
         "entropy": entropy,
         "markov_transition_matrix": transition_matrix,
-        "bayesian_analysis": {
-            "posterior_big_probability": bayesian_big_prob,
-            "posterior_small_probability": round(1.0 - bayesian_big_prob, 4)
-        },
         "ensemble_score": ensemble_score,
         "pattern_breaks": pattern_breaks,
         "repeat_patterns": repeat_patterns
     }
 
-def fetch_and_store_api(game_type: str):
+def fetch_and_store_api(game_type: str) -> bool:
     url = API_ENDPOINTS.get(game_type)
     if not url:
-        return
+        return False
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://ar-lottery01.com/",
+            "Accept": "application/json, text/plain, */*"
+        }
         payload = {"pageSize": 50, "pageNo": 1}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
         if response.status_code == 200:
             data = response.json()
             list_data = []
@@ -185,34 +169,39 @@ def fetch_and_store_api(game_type: str):
                 elif "list" in data:
                     list_data = data["list"]
 
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            for item in list_data:
-                issue = str(
-                    item.get("issueNumber") or 
-                    item.get("period") or 
-                    item.get("issue") or 
-                    item.get("gameNo") or ""
-                ).strip()
-                
-                if not issue:
-                    continue
+            if list_data:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                inserted_count = 0
+                for item in list_data:
+                    issue = str(
+                        item.get("issueNumber") or 
+                        item.get("period") or 
+                        item.get("issue") or 
+                        item.get("gameNo") or ""
+                    ).strip()
+                    
+                    if not issue:
+                        continue
 
-                num = int(item.get("number") or item.get("winningNumber") or item.get("resultNumber") or 0)
-                b_s = classify_number(num)
-                color = str(item.get("color") or ("green" if num in [1,3,7,9] else "red" if num in [2,4,6,8] else "violet"))
-                time_str = str(item.get("time") or item.get("createTime") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    num = int(item.get("number") or item.get("winningNumber") or item.get("resultNumber") or 0)
+                    b_s = classify_number(num)
+                    color = str(item.get("color") or ("green" if num in [1,3,7,9] else "red" if num in [2,4,6,8] else "violet"))
+                    time_str = str(item.get("time") or item.get("createTime") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO wingo_history (game_type, issue_number, number, big_small, color, time_str)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (game_type, issue, num, b_s, color, time_str))
+                    if cursor.rowcount > 0:
+                        inserted_count += 1
                 
-                cursor.execute('''
-                    INSERT OR IGNORE INTO wingo_history (game_type, issue_number, number, big_small, color, time_str)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (game_type, issue, num, b_s, color, time_str))
-            
-            conn.commit()
-            conn.close()
+                conn.commit()
+                conn.close()
+                return True
     except Exception as e:
         print(f"API Sync Error for {game_type}: {str(e)}")
+    return False
 
 # ==================== HTML / JS FRONTEND DASHBOARD ====================
 HTML_CONTENT = """<!DOCTYPE html>
@@ -281,6 +270,11 @@ HTML_CONTENT = """<!DOCTYPE html>
     </nav>
 
     <main class="flex-1 p-4 max-w-7xl w-full mx-auto space-y-6 pb-20">
+        <!-- ERROR / WARNING BANNER FOR CLOUD API BLOCK -->
+        <div id="error-banner" class="hidden bg-red-500/10 border border-red-500/30 p-3 rounded-xl text-red-400 text-xs flex items-center justify-between">
+            <span><i class="fa-solid fa-triangle-exclamation"></i> <b>API Connection Warning:</b> External API is unreachable from cloud server or returned empty results. (Ensure direct network access).</span>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex items-center justify-between bg-cardBg border border-borderCol p-4 rounded-xl shadow">
                 <div>
@@ -296,7 +290,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="bg-cardBg border border-borderCol p-4 rounded-xl shadow flex items-center justify-between">
                 <div>
                     <span class="text-xs uppercase text-gray-400 font-bold">Current Period / Target</span>
-                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Loading...</div>
+                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Waiting for data...</div>
                 </div>
                 <div class="text-2xl font-mono font-bold text-amber-400 bg-darkBg px-4 py-1.5 rounded-lg border border-borderCol" id="timer-countdown">
                     00:00
@@ -396,7 +390,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     </main>
 
     <footer class="bg-cardBg border-t border-borderCol py-4 px-4 text-center text-xs text-gray-500">
-        <p>VIP PATTERN INTELLIGENCE ENGINE • All 14 Analytical Algorithms Active</p>
+        <p>VIP PATTERN INTELLIGENCE ENGINE • Strict Authentic API Engine</p>
     </footer>
 
     <script>
@@ -464,7 +458,11 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function updateDashboardUI(data) {
-            if (!data || data.error) return;
+            if (!data || data.error || data.sample_size === 0) {
+                document.getElementById('error-banner').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('error-banner').classList.add('hidden');
             
             document.getElementById('stat-sample').innerText = data.sample_size;
             document.getElementById('stat-ratio').innerText = `${data.big_percentage}% / ${data.small_percentage}%`;
@@ -611,8 +609,6 @@ HTML_CONTENT = """<!DOCTYPE html>
 </html>
 """
 
-# ==================== FASTAPI ROUTES ====================
-
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
     return HTML_CONTENT
@@ -621,8 +617,8 @@ async def serve_dashboard():
 async def trigger_sync(game_type: str):
     if game_type not in ["30s", "1m"]:
         raise HTTPException(status_code=400, detail="Invalid game type")
-    fetch_and_store_api(game_type)
-    return {"status": "success", "message": f"Synced {game_type} successfully", "timestamp": datetime.now().isoformat()}
+    success = fetch_and_store_api(game_type)
+    return {"status": "success" if success else "failed", "message": f"Synced {game_type}", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/records/{game_type}")
 async def get_records(game_type: str, limit: int = 100, page: int = 1, search: Optional[str] = None):
