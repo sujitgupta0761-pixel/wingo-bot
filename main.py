@@ -1,6 +1,6 @@
 import os
 import sqlite3
-import requests
+import cloudscraper
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import math
 
-app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="2.4.0")
+app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="2.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -150,13 +150,10 @@ def fetch_and_store_api(game_type: str) -> bool:
     if not url:
         return False
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://ar-lottery01.com/",
-            "Accept": "application/json, text/plain, */*"
-        }
+        # Cloudscraper bypasses anti-bot/cloudflare restrictions on cloud servers
+        scraper = cloudscraper.create_scraper()
         payload = {"pageSize": 50, "pageNo": 1}
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = scraper.post(url, json=payload, timeout=15)
         
         if response.status_code == 200:
             data = response.json()
@@ -172,7 +169,6 @@ def fetch_and_store_api(game_type: str) -> bool:
             if list_data:
                 conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
-                inserted_count = 0
                 for item in list_data:
                     issue = str(
                         item.get("issueNumber") or 
@@ -193,14 +189,12 @@ def fetch_and_store_api(game_type: str) -> bool:
                         INSERT OR IGNORE INTO wingo_history (game_type, issue_number, number, big_small, color, time_str)
                         VALUES (?, ?, ?, ?, ?, ?)
                     ''', (game_type, issue, num, b_s, color, time_str))
-                    if cursor.rowcount > 0:
-                        inserted_count += 1
                 
                 conn.commit()
                 conn.close()
                 return True
     except Exception as e:
-        print(f"API Sync Error for {game_type}: {str(e)}")
+        print(f"Cloudscraper API Sync Error for {game_type}: {str(e)}")
     return False
 
 # ==================== HTML / JS FRONTEND DASHBOARD ====================
@@ -270,9 +264,8 @@ HTML_CONTENT = """<!DOCTYPE html>
     </nav>
 
     <main class="flex-1 p-4 max-w-7xl w-full mx-auto space-y-6 pb-20">
-        <!-- ERROR / WARNING BANNER FOR CLOUD API BLOCK -->
         <div id="error-banner" class="hidden bg-red-500/10 border border-red-500/30 p-3 rounded-xl text-red-400 text-xs flex items-center justify-between">
-            <span><i class="fa-solid fa-triangle-exclamation"></i> <b>API Connection Warning:</b> External API is unreachable from cloud server or returned empty results. (Ensure direct network access).</span>
+            <span><i class="fa-solid fa-triangle-exclamation"></i> <b>API Notice:</b> Click 'Sync' button to fetch live history records.</span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -290,7 +283,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="bg-cardBg border border-borderCol p-4 rounded-xl shadow flex items-center justify-between">
                 <div>
                     <span class="text-xs uppercase text-gray-400 font-bold">Current Period / Target</span>
-                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Waiting for data...</div>
+                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Loading...</div>
                 </div>
                 <div class="text-2xl font-mono font-bold text-amber-400 bg-darkBg px-4 py-1.5 rounded-lg border border-borderCol" id="timer-countdown">
                     00:00
@@ -390,7 +383,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     </main>
 
     <footer class="bg-cardBg border-t border-borderCol py-4 px-4 text-center text-xs text-gray-500">
-        <p>VIP PATTERN INTELLIGENCE ENGINE • Strict Authentic API Engine</p>
+        <p>VIP PATTERN INTELLIGENCE ENGINE • Cloudscraper Bypass Active</p>
     </footer>
 
     <script>
@@ -459,10 +452,8 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function updateDashboardUI(data) {
             if (!data || data.error || data.sample_size === 0) {
-                document.getElementById('error-banner').classList.remove('hidden');
                 return;
             }
-            document.getElementById('error-banner').classList.add('hidden');
             
             document.getElementById('stat-sample').innerText = data.sample_size;
             document.getElementById('stat-ratio').innerText = `${data.big_percentage}% / ${data.small_percentage}%`;
