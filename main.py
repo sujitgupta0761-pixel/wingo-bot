@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import math
 
-app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="5.1.0")
+app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="6.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -141,7 +141,7 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         "repeat_patterns": repeat_patterns
     }
 
-# ==================== HTML / JS FRONTEND (CODETABS PROXY) ====================
+# ==================== HTML / JS FRONTEND (BULLETPROOF FETCH) ====================
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -180,7 +180,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </h1>
                 <p class="text-xs text-gray-400 flex items-center gap-2">
                     <span id="api-status-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span id="api-status-text">Codetabs Proxy Live</span> • 
+                    <span id="api-status-text">Bulletproof Live Sync</span> • 
                     <span id="last-sync-time">Sync: Active</span>
                 </p>
             </div>
@@ -225,7 +225,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="bg-cardBg border border-borderCol p-4 rounded-xl shadow flex items-center justify-between">
                 <div>
                     <span class="text-xs uppercase text-gray-400 font-bold">Current Period / Target</span>
-                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Loading...</div>
+                    <div id="current-period-display" class="text-xs font-mono text-gray-300 mt-0.5">Period: Connecting...</div>
                 </div>
                 <div class="text-2xl font-mono font-bold text-amber-400 bg-darkBg px-4 py-1.5 rounded-lg border border-borderCol" id="timer-countdown">
                     00:00
@@ -325,7 +325,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     </main>
 
     <footer class="bg-cardBg border-t border-borderCol py-4 px-4 text-center text-xs text-gray-500">
-        <p>VIP PATTERN INTELLIGENCE ENGINE • Codetabs Proxy Live</p>
+        <p>VIP PATTERN INTELLIGENCE ENGINE • Bulletproof Sync</p>
     </footer>
 
     <script>
@@ -374,17 +374,26 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('game-toggle-30s').className = type === '30s' ? 'px-3 py-1 text-xs rounded-md font-semibold bg-emerald-600 text-white transition' : 'px-3 py-1 text-xs rounded-md font-semibold text-gray-400 hover:text-white transition';
             
             document.getElementById('tab-content-history').classList.add('hidden');
-            codetabsSyncAndAnalyze();
+            liveSyncAndAnalyze();
         }
 
-        async function codetabsSyncAndAnalyze() {
+        async function liveSyncAndAnalyze() {
             try {
                 const rawApiUrl = API_URLS[currentGameType];
-                const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(rawApiUrl);
+                // Using corsproxy.io correctly with proper headers bypass
+                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(rawApiUrl);
                 
                 const res = await fetch(proxyUrl, {
-                    method: 'GET'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ pageSize: 50, pageNo: 1 })
                 });
+                
+                if (!res.ok) throw new Error("Network response was not ok");
+                
                 const json = await res.json();
                 
                 let listData = [];
@@ -401,8 +410,29 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
                 fetchAnalysis();
             } catch (err) {
-                console.error("Codetabs proxy sync error", err);
-                fetchAnalysis();
+                console.error("Primary proxy failed, trying backup...", err);
+                try {
+                    // Fallback to AllOrigins GET if POST proxy fails
+                    const rawApiUrl = API_URLS[currentGameType];
+                    const fallbackUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(rawApiUrl);
+                    const res2 = await fetch(fallbackUrl);
+                    const json2 = await res2.json();
+                    let listData2 = [];
+                    if (json2.data && json2.data.list) listData2 = json2.data.list;
+                    else if (Array.isArray(json2.data)) listData2 = json2.data;
+                    
+                    if (listData2.length > 0) {
+                        await fetch(`/api/store-records/${currentGameType}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(listData2)
+                        });
+                    }
+                    fetchAnalysis();
+                } catch (e2) {
+                    console.error("All fallbacks failed", e2);
+                    fetchAnalysis();
+                }
             }
         }
 
@@ -410,7 +440,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (syncIntervalId) clearInterval(syncIntervalId);
             const val = parseInt(document.getElementById('auto-fetch-interval').value);
             syncIntervalId = setInterval(() => {
-                codetabsSyncAndAnalyze();
+                liveSyncAndAnalyze();
             }, val * 1000);
         }
 
@@ -547,7 +577,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     body: JSON.stringify({ number: parseInt(newNum) })
                 });
                 loadHistoryRecords();
-                codetabsSyncAndAnalyze();
+                liveSyncAndAnalyze();
             }
         }
 
@@ -555,7 +585,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (confirm(`Delete period ${issue}?`)) {
                 await fetch(`/api/records/${currentGameType}/${issue}`, { method: 'DELETE' });
                 loadHistoryRecords();
-                codetabsSyncAndAnalyze();
+                liveSyncAndAnalyze();
             }
         }
 
@@ -564,7 +594,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         window.onload = () => {
-            codetabsSyncAndAnalyze();
+            liveSyncAndAnalyze();
             updateInterval();
         };
     </script>
@@ -651,7 +681,6 @@ class RecordUpdate(BaseModel):
     number: int
 
 @app.put("/api/records/{game_type}/{issue_number}")
-### BACKEND UPDATE
 async def update_record(game_type: str, issue_number: str, payload: RecordUpdate):
     num = payload.number
     if not (0 <= num <= 9):
@@ -674,7 +703,7 @@ async def delete_record(game_type: str, issue_number: str):
     cursor.execute('DELETE FROM wingo_history WHERE game_type = ? AND issue_number = ?', (game_type, issue_number))
     conn.commit()
     conn.close()
-    return {"status": "success", "message": "Record_deleted"}
+    return {"status": "success", "message": "Record deleted"}
 
 if __name__ == "__main__":
     import uvicorn
