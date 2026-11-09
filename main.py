@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 active_sessions = {}
 blocked_ips = set()
 
-# Firebase Database URL
+# Firebase Database URL provided by you
 FIREBASE_URL = "https://vipp-b3a35-default-rtdb.firebaseio.com/passwords.json"
 
 def load_passwords():
@@ -39,7 +39,6 @@ security_config = {
     "dashboard_password": "8709"
 }
 
-# SQLite Database for Wingo History & Analysis
 import sqlite3
 import math
 from typing import List, Dict, Any
@@ -68,65 +67,6 @@ init_db()
 
 def classify_number(num: int) -> str:
     return "Big" if num >= 5 else "Small"
-
-def calculate_entropy(outcomes: List[str]) -> float:
-    if not outcomes:
-        return 0.0
-    total = len(outcomes)
-    counts = {"Big": outcomes.count("Big"), "Small": outcomes.count("Small")}
-    entropy = 0.0
-    for count in counts.values():
-        if count > 0:
-            p = count / total
-            entropy -= p * math.log2(p)
-    return round(entropy, 4)
-
-def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    if not records:
-        return {"error": "Insufficient data", "sample_size": 0}
-    
-    sorted_recs = sorted(records, key=lambda x: str(x['issue_number']))
-    numbers = [r['number'] for r in sorted_recs]
-    outcomes = [r['big_small'] for r in sorted_recs]
-    sample_size = len(outcomes)
-    
-    big_count = outcomes.count("Big")
-    small_count = outcomes.count("Small")
-    big_pct = round((big_count / sample_size) * 100, 2) if sample_size > 0 else 0.0
-    small_pct = round((small_count / sample_size) * 100, 2) if sample_size > 0 else 0.0
-    
-    current_streak_type = outcomes[-1] if outcomes else None
-    current_streak_len = 0
-    for o in reversed(outcomes):
-        if o == current_streak_type:
-            current_streak_len += 1
-        else:
-            break
-
-    numeric_outcomes = [1 if o == "Big" else 0 for o in outcomes]
-    moving_avg = []
-    window = 10
-    for i in range(len(numeric_outcomes)):
-        w_slice = numeric_outcomes[max(0, i - window + 1):i + 1]
-        moving_avg.append(round(sum(w_slice) / len(w_slice), 2))
-
-    digit_freq = {i: numbers.count(i) for i in range(10)}
-    entropy = calculate_entropy(outcomes)
-
-    return {
-        "sample_size": sample_size,
-        "big_count": big_count,
-        "small_count": small_count,
-        "big_percentage": big_pct,
-        "small_percentage": small_pct,
-        "digit_frequency": digit_freq,
-        "streak_analysis": {
-            "current_streak_type": current_streak_type,
-            "current_streak_length": current_streak_len,
-        },
-        "moving_average": moving_avg[-20:],
-        "entropy": entropy
-    }
 
 HTML_LOGIN = """<!DOCTYPE html>
 <html lang="hi">
@@ -388,20 +328,17 @@ HTML_MASTER_CONTENT = """<!DOCTYPE html>
             return { prediction: recent[0], pattern: "📈 TREND FOLLOW (" + recent[0] + ")" };
         }
 
-        // --- BROWSER DIRECT FETCH USING CORS PROXY / ALLORIGINS ---
+        // --- BROWSER DIRECT FETCH USING CODETABS PROXY ---
         async function fetchWithRetry(url, retries = 2, timeout = 3000) {
             for (let i = 0; i < retries; i++) {
                 try {
-                    let proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url + '?pageSize=50&pageNo=1');
+                    let proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url + '?pageSize=50&pageNo=1');
                     let controller = new AbortController();
                     let timer = setTimeout(() => controller.abort(), timeout);
                     let res = await fetch(proxyUrl, { signal: controller.signal });
                     clearTimeout(timer);
                     if (res.ok) {
-                        let wrap = await res.json();
-                        if (wrap.contents) {
-                            return JSON.parse(wrap.contents);
-                        }
+                        return await res.json();
                     }
                 } catch (err) { if (i === retries - 1) throw err; }
             }
