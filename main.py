@@ -1,6 +1,8 @@
 import os
 import sqlite3
-import requests
+import cloudscraper
+import time
+import threading
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
@@ -9,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import math
 
-app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="2.8.0")
+app = FastAPI(title="ADVANCED BIG/SMALL PATTERN INTELLIGENCE ENGINE", version="3.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,6 +23,11 @@ app.add_middleware(
 
 os.makedirs("data", exist_ok=True)
 DB_PATH = "data/wingo_history.db"
+
+API_ENDPOINTS = {
+    "30s": "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
+    "1m": "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
+}
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -44,7 +51,69 @@ init_db()
 def classify_number(num: int) -> str:
     return "Big" if num >= 5 else "Small"
 
-# ==================== PYTHON MATHEMATICAL ENGINE (ASLI DIMAAG) ====================
+# ==================== LIGHTNING FAST BACKGROUND WORKER (1 SEC) ====================
+def fetch_and_store_data(game_type: str):
+    url = API_ENDPOINTS.get(game_type)
+    if not url:
+        return
+    try:
+        scraper = cloudscraper.create_scraper()
+        payload = {"pageSize": 50, "pageNo": 1}
+        response = scraper.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            list_data = []
+            if isinstance(data, dict):
+                if "data" in data and isinstance(data["data"], dict) and "list" in data["data"]:
+                    list_data = data["data"]["list"]
+                elif "data" in data and isinstance(data["data"], list):
+                    list_data = data["data"]
+                elif "list" in data:
+                    list_data = data["list"]
+
+            if list_data:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                for item in list_data:
+                    issue = str(
+                        item.get("issueNumber") or 
+                        item.get("period") or 
+                        item.get("issue") or 
+                        item.get("gameNo") or ""
+                    ).strip()
+                    
+                    if not issue:
+                        continue
+
+                    num = int(item.get("number") or item.get("winningNumber") or item.get("resultNumber") or 0)
+                    b_s = classify_number(num)
+                    color = str(item.get("color") or ("green" if num in [1,3,7,9] else "red" if num in [2,4,6,8] else "violet"))
+                    time_str = str(item.get("time") or item.get("createTime") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO wingo_history (game_type, issue_number, number, big_small, color, time_str)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (game_type, issue, num, b_s, color, time_str))
+                
+                conn.commit()
+                conn.close()
+    except Exception as e:
+        pass
+
+def background_auto_sync_loop():
+    while True:
+        # Ab yeh har 1 second mein super fast background fetch karega
+        fetch_and_store_data("30s")
+        fetch_and_store_data("1m")
+        time.sleep(1)
+
+@app.on_event("startup")
+def startup_event():
+    thread = threading.Thread(target=background_auto_sync_loop, daemon=True)
+    thread.start()
+
+# ==================== PYTHON MATHEMATICAL ENGINE ====================
 def calculate_entropy(outcomes: List[str]) -> float:
     if not outcomes:
         return 0.0
@@ -141,7 +210,7 @@ def perform_statistical_analysis(records: List[Dict[str, Any]]) -> Dict[str, Any
         "repeat_patterns": repeat_patterns
     }
 
-# ==================== HTML / JS FRONTEND WITH AUTO-FETCH SETTING ====================
+# ==================== HTML / JS FRONTEND ====================
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -180,23 +249,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </h1>
                 <p class="text-xs text-gray-400 flex items-center gap-2">
                     <span id="api-status-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span id="api-status-text">Auto-Fetch Active</span> • 
-                    <span id="last-sync-time">Sync: Never</span>
+                    <span id="api-status-text">Lightning Fast (1s Interval)</span> • 
+                    <span id="last-sync-time">Live</span>
                 </p>
             </div>
-        </div>
-        <div class="flex items-center space-x-2">
-            <!-- Auto Fetch Interval Selector -->
-            <select id="auto-fetch-interval" onchange="updateAutoFetchInterval()" class="bg-darkBg border border-borderCol text-xs text-emerald-400 font-semibold px-2 py-2 rounded-lg focus:outline-none focus:border-emerald-500">
-                <option value="5">Auto: 5s</option>
-                <option value="10" selected>Auto: 10s</option>
-                <option value="30">Auto: 30s</option>
-                <option value="60">Auto: 1m</option>
-                <option value="0">Auto: OFF</option>
-            </select>
-            <button onclick="triggerBrowserSync()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition flex items-center gap-1 shadow">
-                <i class="fa-solid fa-rotate"></i> Sync
-            </button>
         </div>
     </header>
 
@@ -331,7 +387,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     </main>
 
     <footer class="bg-cardBg border-t border-borderCol py-4 px-4 text-center text-xs text-gray-500">
-        <p>VIP PATTERN INTELLIGENCE ENGINE • Configurable Auto-Fetch</p>
+        <p>VIP PATTERN INTELLIGENCE ENGINE • 1-Second Lightning Fast Sync</p>
     </footer>
 
     <script>
@@ -339,12 +395,6 @@ HTML_CONTENT = """<!DOCTYPE html>
         let pieChartInstance = null;
         let trendChartInstance = null;
         let countdownTimer = 60;
-        let autoFetchTimer = null;
-
-        const API_URLS = {
-            "30s": "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json",
-            "1m": "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
-        };
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(b => {
@@ -380,47 +430,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('game-toggle-30s').className = type === '30s' ? 'px-3 py-1 text-xs rounded-md font-semibold bg-emerald-600 text-white transition' : 'px-3 py-1 text-xs rounded-md font-semibold text-gray-400 hover:text-white transition';
             
             document.getElementById('tab-content-history').classList.add('hidden');
-            triggerBrowserSync();
-        }
-
-        async function triggerBrowserSync() {
-            try {
-                const targetUrl = API_URLS[currentGameType];
-                const res = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pageSize: 50, pageNo: 1 })
-                });
-                const json = await res.json();
-                
-                let listData = [];
-                if (json.data && json.data.list) listData = json.data.list;
-                else if (Array.isArray(json.data)) listData = json.data;
-                else if (json.list) listData = json.list;
-
-                if (listData.length > 0) {
-                    await fetch(`/api/store-records/${currentGameType}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(listData)
-                    });
-                }
-                document.getElementById('last-sync-time').innerText = `Sync: ${new Date().toLocaleTimeString()}`;
-                fetchAnalysis();
-            } catch (err) {
-                console.error("Browser sync error", err);
-                fetchAnalysis();
-            }
-        }
-
-        function updateAutoFetchInterval() {
-            if (autoFetchTimer) clearInterval(autoFetchTimer);
-            const val = parseInt(document.getElementById('auto-fetch-interval').value);
-            if (val > 0) {
-                autoFetchTimer = setInterval(() => {
-                    triggerBrowserSync();
-                }, val * 1000);
-            }
+            fetchAnalysis();
         }
 
         async function fetchAnalysis() {
@@ -458,7 +468,9 @@ HTML_CONTENT = """<!DOCTYPE html>
             renderTrendChart(data.moving_average);
         }
 
+        // Frontend auto-refreshes every 1 second for ultra-fast response
         setInterval(() => {
+            fetchAnalysis();
             countdownTimer--;
             if (countdownTimer <= 0) {
                 countdownTimer = currentGameType === '1m' ? 60 : 30;
@@ -556,7 +568,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     body: JSON.stringify({ number: parseInt(newNum) })
                 });
                 loadHistoryRecords();
-                triggerBrowserSync();
+                fetchAnalysis();
             }
         }
 
@@ -564,7 +576,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (confirm(`Delete period ${issue}?`)) {
                 await fetch(`/api/records/${currentGameType}/${issue}`, { method: 'DELETE' });
                 loadHistoryRecords();
-                triggerBrowserSync();
+                fetchAnalysis();
             }
         }
 
@@ -573,8 +585,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         window.onload = () => {
-            triggerBrowserSync();
-            updateAutoFetchInterval(); // Start default auto fetch timer (10s)
+            fetchAnalysis();
         };
     </script>
 </body>
@@ -585,38 +596,6 @@ HTML_CONTENT = """<!DOCTYPE html>
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard():
     return HTML_CONTENT
-
-@app.post("/api/store-records/{game_type}")
-async def store_records(game_type: str, items: List[Dict[str, Any]]):
-    if game_type not in ["30s", "1m"]:
-        raise HTTPException(status_code=400, detail="Invalid game type")
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    for item in items:
-        issue = str(
-            item.get("issueNumber") or 
-            item.get("period") or 
-            item.get("issue") or 
-            item.get("gameNo") or ""
-        ).strip()
-        
-        if not issue:
-            continue
-
-        num = int(item.get("number") or item.get("winningNumber") or item.get("resultNumber") or 0)
-        b_s = classify_number(num)
-        color = str(item.get("color") or ("green" if num in [1,3,7,9] else "red" if num in [2,4,6,8] else "violet"))
-        time_str = str(item.get("time") or item.get("createTime") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        
-        cursor.execute('''
-            INSERT OR IGNORE INTO wingo_history (game_type, issue_number, number, big_small, color, time_str)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (game_type, issue, num, b_s, color, time_str))
-    
-    conn.commit()
-    conn.close()
-    return {"status": "success", "stored": len(items)}
 
 @app.get("/api/records/{game_type}")
 async def get_records(game_type: str, limit: int = 100, page: int = 1, search: Optional[str] = None):
@@ -676,6 +655,7 @@ async def update_record(game_type: str, issue_number: str, payload: RecordUpdate
     return {"status": "success", "message": "Record updated"}
 
 @app.delete("/api/records/{game_type}/{issue_number}")
+### BACKEND DELETE
 async def delete_record(game_type: str, issue_number: str):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
